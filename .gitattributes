@@ -1,0 +1,29 @@
+# Handle line endings
+* text=auto
+
+# Force LF for shell scripts and source files
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.svg text eol=lf
+*.txt text eol=lf
+
+# Keep CRLF for Windows batch files
+*.bat text eol=crlf
+
+# Binary files - no line ending conversion
+*.ico binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.exe binary
+*.bin binary
+*.onnx binary
+*.pt binary
+*.zip binary
+*.toml binary

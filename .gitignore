@@ -1,0 +1,64 @@
+# ── Node.js ──────────────────────────────────────────
+node_modules/
+
+# ── Large binary / runtime-generated ─────────────────
+# The main.exe is distributed separately as a GitHub Release asset
+dist/main.exe
+
+# Voice model binaries (too large for git; distributed separately)
+dist/model_dir/
+dist/static_model_dir/
+model_dir/
+static_model_dir/
+
+# ML inference modules (large ONNX/PT files)
+dist/modules/
+
+# ── Logs & temp ───────────────────────────────────────
+*.log
+vcclient.log
+dist/vcclient.log
+console_logs.txt
+dom_dump.html
+
+# Temporary processing directories
+dist/tmp_dir/
+dist/upload_dir/
+tmp_dir/
+upload_dir/
+
+# ── User-specific settings ────────────────────────────
+dist/settings/
+settings/
+
+# ── OS files ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / Editor ──────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ── Environment ───────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Python artifacts ──────────────────────────────────
+*.pyc
+__pycache__/
+*.pyo
+
+# ── Electron build output ─────────────────────────────
+out/
+build/
+release/
+
+# ── Agent scaffolding (not part of the app) ───────────
+.agents/
+
+# ── Skills lock (generated) ───────────────────────────
+skills-lock.json

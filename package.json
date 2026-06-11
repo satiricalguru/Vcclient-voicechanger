@@ -1,0 +1,32 @@
+{
+  "name": "vcclient-voicechanger",
+  "version": "2.0.78-beta",
+  "description": "Modern Electron shell for w-okada's Voice Changer — upgraded UI with glassmorphism themes, real-time status, and particle effects.",
+  "main": "main.js",
+  "author": "satiricalguru",
+  "license": "MIT",
+  "homepage": "https://github.com/satiricalguru/Vcclient-voicechanger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/satiricalguru/Vcclient-voicechanger.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "node start.js",
+    "lint": "eslint main.js start.js",
+    "create-ico": "python scripts/create_ico.py"
+  },
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "eslint": "^9.0.0"
+  },
+  "keywords": [
+    "voice-changer",
+    "ai",
+    "rvc",
+    "beatrice",
+    "electron",
+    "real-time",
+    "voice-conversion"
+  ]
+}
