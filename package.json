@@ -12,13 +12,39 @@
   },
   "scripts": {
     "start": "electron .",
-    "dev": "node start.js",
-    "lint": "eslint main.js start.js",
-    "create-ico": "python scripts/create_ico.py"
+    "dev": "electron .",
+    "lint": "eslint main.js",
+    "create-ico": "python scripts/create_ico.py",
+    "dist": "electron-builder"
   },
   "devDependencies": {
     "electron": "^42.4.0",
+    "electron-builder": "^24.13.3",
     "eslint": "^9.0.0"
+  },
+  "build": {
+    "appId": "com.voice.changer.client",
+    "productName": "Vcclient",
+    "directories": {
+      "output": "dist-built"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "dist/**"
+    ],
+    "win": {
+      "icon": "app-icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Vcclient"
+    }
   },
   "keywords": [
     "voice-changer",

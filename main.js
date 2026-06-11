@@ -1,17 +1,96 @@
 const { app, BrowserWindow, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { spawn, execSync } = require('child_process');
 
 app.setAppUserModelId('com.voice.changer.client');
 
-const MAX_RETRIES = 10;
+const MAX_RETRIES = 15;
 const RETRY_INTERVAL = 1000;
 
 const testMode = process.argv.includes('--test');
 
 // Clear previous logs
 if (fs.existsSync(path.join(__dirname, 'console_logs.txt'))) {
-  fs.unlinkSync(path.join(__dirname, 'console_logs.txt'));
+  try {
+    fs.unlinkSync(path.join(__dirname, 'console_logs.txt'));
+  } catch (e) {}
+}
+
+// Determine paths for packaged vs development run
+const isPackaged = app.isPackaged;
+const baseDir = isPackaged 
+  ? path.join(process.resourcesPath, 'app.asar.unpacked') 
+  : __dirname;
+
+const pythonExe = path.join(baseDir, 'dist', 'main.exe');
+const args = ['cui', '--https=false', '--no_cui=True'];
+
+let backend = null;
+let isShuttingDown = false;
+
+// Kill any previously orphaned main.exe instances to prevent port binding conflicts
+if (process.platform === 'win32') {
+  try {
+    console.log('Cleaning up existing main.exe processes...');
+    execSync('taskkill /F /IM main.exe', { stdio: 'ignore' });
+  } catch (e) {
+    // No existing processes to kill
+  }
+}
+
+function killProcessTree(pid) {
+  try {
+    if (process.platform === 'win32') {
+      execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
+    } else {
+      process.kill(pid, 'SIGKILL');
+    }
+  } catch (err) {
+    // Already terminated or permission issue
+  }
+}
+
+function startBackend() {
+  console.log(`Starting Voice Changer Backend: ${pythonExe} ${args.join(' ')}`);
+
+  backend = spawn(pythonExe, args, {
+    cwd: path.join(baseDir, 'dist'),
+    stdio: 'ignore',
+    shell: false,
+    windowsHide: true // This prevents the black cmd window from appearing
+  });
+
+  backend.on('error', (err) => {
+    console.error('Failed to start backend:', err.message);
+    if (!isShuttingDown) {
+      console.log('Retrying in 3 seconds...');
+      setTimeout(startBackend, 3000);
+    }
+  });
+
+  backend.on('exit', (code, signal) => {
+    if (!isShuttingDown) {
+      console.log('Backend process exited, restarting in 3 seconds...');
+      setTimeout(startBackend, 3000);
+    }
+  });
+}
+
+// Start the backend
+startBackend();
+
+function shutdown() {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+
+  console.log('Terminating Voice Changer backend...');
+
+  if (backend && !backend.killed) {
+    killProcessTree(backend.pid);
+  }
 }
 
 function createWindow() {
@@ -108,3 +187,7 @@ app.on('window-all-closed', () => {
   }
 });
 
+// Clean up when app is quitting
+app.on('will-quit', () => {
+  shutdown();
+});
