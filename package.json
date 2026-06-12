@@ -37,7 +37,15 @@
       "!dist/tmp_dir/**/*",
       "!dist/settings/**/*",
       "!dist/*.log",
-      "!dist/*.txt"
+      "!dist/*.txt",
+      "!modules/**/*",
+      "!model_dir/**/*",
+      "!static_model_dir/**/*",
+      "!upload_dir/**/*",
+      "!tmp_dir/**/*",
+      "!settings/**/*",
+      "!*.log",
+      "!*.txt"
     ],
     "asar": true,
     "asarUnpack": [
