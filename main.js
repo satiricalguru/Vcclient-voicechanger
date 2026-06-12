@@ -39,6 +39,8 @@ if (!gotTheLock) {
   let backend = null;
   let isShuttingDown = false;
   let logStream = null;
+  let mainWin = null;
+  let backendRestartTimer = null;
 
   try {
     const logPath = path.join(app.getPath('userData'), 'backend.log');
@@ -410,14 +412,14 @@ if (!gotTheLock) {
       console.error('Failed to start backend:', err.message);
       if (!isShuttingDown) {
         console.log('Retrying in 3 seconds...');
-        setTimeout(startBackend, 3000);
+        backendRestartTimer = setTimeout(startBackend, 3000);
       }
     });
 
     backend.on('exit', (code, signal) => {
       if (!isShuttingDown) {
         console.log('Backend process exited, restarting in 3 seconds...');
-        setTimeout(startBackend, 3000);
+        backendRestartTimer = setTimeout(startBackend, 3000);
       }
     });
   }
@@ -429,6 +431,12 @@ if (!gotTheLock) {
       return;
     }
     isShuttingDown = true;
+
+    // Cancel any pending backend restart timer so it cannot fire after shutdown
+    if (backendRestartTimer) {
+      clearTimeout(backendRestartTimer);
+      backendRestartTimer = null;
+    }
 
     console.log('Terminating Voice Changer backend...');
 
@@ -444,6 +452,14 @@ if (!gotTheLock) {
   }
 
   function createWindow() {
+    // GUARD: Never create more than one main window
+    if (mainWin !== null && !mainWin.isDestroyed()) {
+      console.log('Window already exists — focusing existing window instead of creating a new one.');
+      if (mainWin.isMinimized()) mainWin.restore();
+      mainWin.focus();
+      return mainWin;
+    }
+
     // Resolve icon path — prefer root-level ICO for Windows taskbar
     let iconPath;
     if (process.platform === 'win32') {
@@ -471,6 +487,10 @@ if (!gotTheLock) {
       backgroundColor: '#08080f'
     });
 
+    // Track the main window reference; clear it when closed
+    mainWin = win;
+    win.on('closed', () => { mainWin = null; });
+
     // Capture console logs from the webview in test mode only
     if (testMode) {
       win.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -483,6 +503,9 @@ if (!gotTheLock) {
     let testTriggered = false;
 
     function loadApp() {
+      // Don't try to load if the window was already destroyed
+      if (win.isDestroyed()) return;
+
       win.loadURL('http://127.0.0.1:18000').then(() => {
         console.log('Successfully loaded URL: http://127.0.0.1:18000');
         if (testMode && !testTriggered) {
@@ -512,7 +535,9 @@ if (!gotTheLock) {
           if (testMode) {
             process.exit(1);
           }
-          win.loadURL('data:text/html,<h1>Unable to connect to Voice Changer backend</h1><p>Please ensure the backend is running on port 18000.</p>');
+          if (!win.isDestroyed()) {
+            win.loadURL('data:text/html,<h1>Unable to connect to Voice Changer backend</h1><p>Please ensure the backend is running on port 18000.</p>');
+          }
         }
       });
     }
@@ -523,11 +548,10 @@ if (!gotTheLock) {
   }
 
   app.on('second-instance', (event, commandLine, workingDirectory) => {
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length) {
-      const win = windows[0];
-      if (win.isMinimized()) win.restore();
-      win.focus();
+    // A second instance tried to launch — focus our existing window instead
+    if (mainWin && !mainWin.isDestroyed()) {
+      if (mainWin.isMinimized()) mainWin.restore();
+      mainWin.focus();
     }
   });
 
