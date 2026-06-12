@@ -33,7 +33,7 @@ if (!gotTheLock) {
   const pythonExe = path.join(baseDir, 'dist', 'main.exe');
   // Pass arguments as separate items (space-separated) to match start_http.bat exactly.
   // Using = (e.g. --no_cui=True) causes the Python backend CLI parser to fail, which defaults to launching the GUI window.
-  const args = ['cui', '--https', 'false', '--no_cui', 'True'];
+  const args = ['cui', '--https', 'false', '--no_cui', 'True', '--launch_client', 'false'];
 
   let backend = null;
   let isShuttingDown = false;
