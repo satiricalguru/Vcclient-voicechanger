@@ -396,7 +396,30 @@ if (!gotTheLock) {
     }
   }
 
-  function startBackend() {
+  // Creates a tiny no-op .exe so Python's webbrowser.open() calls it and returns
+  // "success" without actually opening Chrome/Edge via os.startfile() fallback.
+  // Python's shutil.which() only recognises real .exe files on Windows, so
+  // BROWSER=echo (a shell built-in) doesn't work — we need an actual executable.
+  function ensureNoopBrowserExe() {
+    if (process.platform !== 'win32') return null;
+    const exePath = path.join(baseDir, 'dist', 'noop-browser.exe');
+    if (fs.existsSync(exePath)) return exePath;
+    try {
+      const cs = 'public class N{public static void Main(string[] a){}}'
+        .replace(/'/g, "'");
+      execSync(
+        `powershell -NoProfile -Command "Add-Type -TypeDefinition '${cs}' -OutputAssembly '${exePath}' -OutputType ConsoleApplication"`,
+        { timeout: 15000, stdio: 'ignore' }
+      );
+      console.log('Created noop-browser.exe to suppress backend browser launch.');
+      return exePath;
+    } catch (e) {
+      console.warn('Could not create noop-browser.exe:', e.message);
+      return null;
+    }
+  }
+
+  function startBackend(noopBrowserExe) {
     console.log(`Starting Voice Changer Backend: ${pythonExe} ${args.join(' ')}`);
 
     const stdioOption = logStream ? ['ignore', logStream, logStream] : 'ignore';
@@ -408,10 +431,9 @@ if (!gotTheLock) {
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1',
-        // Suppress Python's webbrowser.open() — the backend tries to open the
-        // UI in the system's default browser; we serve it in Electron instead.
-        BROWSER: 'echo',
-        DISPLAY: ''
+        // Point Python's webbrowser module to our no-op exe so it never falls
+        // back to os.startfile() (which opens Chrome/Edge regardless of env vars).
+        ...(noopBrowserExe ? { BROWSER: noopBrowserExe } : {})
       }
     });
 
@@ -419,14 +441,14 @@ if (!gotTheLock) {
       console.error('Failed to start backend:', err.message);
       if (!isShuttingDown) {
         console.log('Retrying in 3 seconds...');
-        backendRestartTimer = setTimeout(startBackend, 3000);
+        backendRestartTimer = setTimeout(() => startBackend(noopBrowserExe), 3000);
       }
     });
 
     backend.on('exit', (code, signal) => {
       if (!isShuttingDown) {
         console.log('Backend process exited, restarting in 3 seconds...');
-        backendRestartTimer = setTimeout(startBackend, 3000);
+        backendRestartTimer = setTimeout(() => startBackend(noopBrowserExe), 3000);
       }
     });
   }
@@ -565,7 +587,10 @@ if (!gotTheLock) {
   app.whenReady().then(async () => {
     try {
       await checkAndDownloadResources();
-      startBackend();
+      // Build the noop-browser.exe that suppresses Python's webbrowser.open() call.
+      // Must happen before startBackend() so the env var is ready.
+      const noopBrowserExe = ensureNoopBrowserExe();
+      startBackend(noopBrowserExe);
       createWindow();
 
       app.on('activate', () => {
