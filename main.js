@@ -12,7 +12,7 @@ if (!gotTheLock) {
   // Primary instance logic
   app.setAppUserModelId('com.voice.changer.client');
 
-  const MAX_RETRIES = 15;
+  const MAX_RETRIES = 30;
   const RETRY_INTERVAL = 1000;
 
   const testMode = process.argv.includes('--test');
