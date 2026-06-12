@@ -31,10 +31,8 @@ if (!gotTheLock) {
     : __dirname;
 
   const pythonExe = path.join(baseDir, 'dist', 'main.exe');
-  // Pass arguments as separate items (space-separated) to match start_http.bat exactly.
-  // --no_cui True: prevents the backend from launching its own Qt GUI window.
-  // --launch_client False: prevents the backend from opening a client browser window.
-  const args = ['cui', '--https', 'false', '--no_cui', 'True', '--launch_client', 'False'];
+  // Pass arguments using the flag=value format to ensure correct boolean evaluation by Google Fire.
+  const args = ['cui', '--https=false', '--no_cui=True', '--launch_client=False'];
 
   let backend = null;
   let isShuttingDown = false;
