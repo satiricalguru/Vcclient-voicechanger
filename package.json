@@ -28,6 +28,17 @@
     "directories": {
       "output": "dist-built"
     },
+    "files": [
+      "**/*",
+      "!dist/modules/**/*",
+      "!dist/model_dir/**/*",
+      "!dist/static_model_dir/**/*",
+      "!dist/upload_dir/**/*",
+      "!dist/tmp_dir/**/*",
+      "!dist/settings/**/*",
+      "!dist/*.log",
+      "!dist/*.txt"
+    ],
     "asar": true,
     "asarUnpack": [
       "dist/**"

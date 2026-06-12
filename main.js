@@ -2,6 +2,7 @@ const { app, BrowserWindow, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execSync } = require('child_process');
+const https = require('https');
 
 // Single instance lock to prevent duplicate app windows
 const gotTheLock = app.requestSingleInstanceLock();
@@ -68,6 +69,330 @@ if (!gotTheLock) {
     }
   }
 
+  function downloadFile(url, destPath, filename, win, isApi = false) {
+    return new Promise((resolve, reject) => {
+      if (fs.existsSync(destPath)) {
+        try { fs.unlinkSync(destPath); } catch (e) {}
+      }
+
+      const file = fs.createWriteStream(destPath);
+      let downloadedBytes = 0;
+      let totalBytes = 0;
+
+      const urlObj = new URL(url);
+      const headers = {
+        'User-Agent': 'electron-downloader'
+      };
+
+      if (isApi && urlObj.hostname.endsWith('github.com') && process.env.GITHUB_TOKEN) {
+        headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+        headers['Accept'] = 'application/octet-stream';
+      }
+
+      const options = {
+        headers: headers
+      };
+
+      const request = https.get(url, options, (response) => {
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          file.end();
+          file.on('finish', () => {
+            try { fs.unlinkSync(destPath); } catch(e) {}
+            downloadFile(response.headers.location, destPath, filename, win, false)
+              .then(resolve)
+              .catch(reject);
+          });
+          return;
+        }
+
+        if (response.statusCode !== 200) {
+          file.end();
+          file.on('finish', () => {
+            try { fs.unlinkSync(destPath); } catch(e) {}
+            reject(new Error(`Server returned status code ${response.statusCode}`));
+          });
+          return;
+        }
+
+        totalBytes = parseInt(response.headers['content-length'], 10) || 0;
+        console.log(`Starting download for ${filename}. Expected size: ${totalBytes} bytes`);
+
+        // Register the finish event only for the actual 200 response download
+        file.on('finish', () => {
+          console.log(`Finished writing ${filename} to disk.`);
+          resolve();
+        });
+
+        response.pipe(file);
+
+        response.on('data', (chunk) => {
+          downloadedBytes += chunk.length;
+          if (totalBytes > 0) {
+            const percent = Math.round((downloadedBytes / totalBytes) * 100);
+            const mbDownloaded = (downloadedBytes / (1024 * 1024)).toFixed(1);
+            const mbTotal = (totalBytes / (1024 * 1024)).toFixed(1);
+            
+            win.webContents.executeJavaScript(`
+              if (document.getElementById('progress')) {
+                document.getElementById('progress').style.width = '${percent}%';
+                document.getElementById('status').innerText = 'Downloading ${filename}... ${percent}%';
+                document.getElementById('details').innerText = '${mbDownloaded} MB of ${mbTotal} MB';
+              }
+            `).catch(() => {});
+          }
+        });
+      });
+
+      request.on('error', (err) => {
+        file.end();
+        file.on('finish', () => {
+          try { fs.unlinkSync(destPath); } catch(e) {}
+          reject(err);
+        });
+      });
+
+      file.on('error', (err) => {
+        file.end();
+        reject(err);
+      });
+    });
+  }
+
+  function extractZip(zipPath, destDir, win) {
+    return new Promise((resolve, reject) => {
+      win.webContents.executeJavaScript(`
+        if (document.getElementById('status')) {
+          document.getElementById('status').innerText = 'Extracting files...';
+          document.getElementById('details').innerText = 'This may take a minute.';
+          document.getElementById('progress').style.width = '100%';
+        }
+      `).catch(() => {});
+
+      try {
+        execSync(`tar -x -f "${zipPath}" -C "${destDir}"`, { stdio: 'ignore' });
+        try { fs.unlinkSync(zipPath); } catch (e) {}
+        resolve();
+      } catch (tarErr) {
+        console.warn('tar extraction failed, falling back to powershell:', tarErr.message);
+        try {
+          execSync(`powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`, { stdio: 'ignore' });
+          try { fs.unlinkSync(zipPath); } catch (e) {}
+          resolve();
+        } catch (psErr) {
+          reject(new Error(`Extraction failed: ${psErr.message}`));
+        }
+      }
+    });
+  }
+
+  function getAssetIdAndDownloadUrl(filename) {
+    return new Promise((resolve, reject) => {
+      if (!process.env.GITHUB_TOKEN) {
+        resolve({
+          url: `https://github.com/satiricalguru/Vcclient-voicechanger/releases/download/v2.0.78-beta/${filename}`,
+          isApi: false
+        });
+        return;
+      }
+
+      const url = 'https://api.github.com/repos/satiricalguru/Vcclient-voicechanger/releases/tags/v2.0.78-beta';
+      const options = {
+        headers: {
+          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'electron-downloader'
+        }
+      };
+
+      https.get(url, options, (response) => {
+        if (response.statusCode !== 200) {
+          reject(new Error(`Failed to query release tags: status ${response.statusCode}`));
+          return;
+        }
+
+        let data = '';
+        response.on('data', (chunk) => { data += chunk; });
+        response.on('end', () => {
+          try {
+            const release = JSON.parse(data);
+            const asset = release.assets.find(a => a.name === filename);
+            if (!asset) {
+              reject(new Error(`Asset ${filename} not found in release`));
+              return;
+            }
+            resolve({
+              url: `https://api.github.com/repos/satiricalguru/Vcclient-voicechanger/releases/assets/${asset.id}`,
+              isApi: true
+            });
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }).on('error', reject);
+    });
+  }
+
+  async function checkAndDownloadResources() {
+    const sentinelModules = path.join(baseDir, 'dist', 'modules', 'rmvpe', 'rmvpe_20231006.onnx');
+    const sentinelModels = path.join(baseDir, 'dist', 'model_dir', '0', 'kikoto_kurage_v2_40k_e100_float.onnx');
+
+    const needsModules = !fs.existsSync(sentinelModules);
+    const needsModels = !fs.existsSync(sentinelModels);
+
+    if (!needsModules && !needsModels) {
+      return;
+    }
+
+    let iconPath;
+    if (process.platform === 'win32') {
+      iconPath = path.join(__dirname, 'app-icon.ico');
+      if (!fs.existsSync(iconPath)) {
+        iconPath = path.join(__dirname, 'dist', 'web_front', 'assets', 'icons', 'app-icon.ico');
+      }
+    } else {
+      iconPath = path.join(__dirname, 'dist', 'web_front', 'assets', 'icons', 'app-icon.png');
+    }
+    const appIcon = nativeImage.createFromPath(iconPath);
+
+    const downloadWin = new BrowserWindow({
+      width: 550,
+      height: 350,
+      resizable: false,
+      frame: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      },
+      backgroundColor: '#08080f',
+      alwaysOnTop: true,
+      center: true,
+      icon: appIcon,
+      title: "VCClient Initializer"
+    });
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body {
+            background: #08080f;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+          }
+          .container {
+            width: 80%;
+            text-align: center;
+          }
+          h2 {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            margin: 0 0 10px 0;
+            background: linear-gradient(135deg, #a78bfa, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+          }
+          .status-text {
+            font-size: 13px;
+            color: #9ca3af;
+            margin-bottom: 20px;
+            height: 18px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .progress-track {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 15px;
+            position: relative;
+          }
+          .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #a78bfa);
+            transition: width 0.1s ease;
+            border-radius: 3px;
+          }
+          .details {
+            font-size: 11px;
+            color: #6b7280;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h2>Initializing Voice Changer</h2>
+          <div id="status" class="status-text">Preparing downloader...</div>
+          <div class="progress-track">
+            <div id="progress" class="progress-bar"></div>
+          </div>
+          <div id="details" class="details">Checking download sources...</div>
+        </div>
+      </body>
+      </html>
+    `;
+    downloadWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+    let downloadSuccess = false;
+
+    downloadWin.on('closed', () => {
+      if (!downloadSuccess) {
+        console.log('Downloader window closed by user. Quitting.');
+        app.quit();
+        process.exit(0);
+      }
+    });
+
+    const tempDir = app.getPath('temp');
+    const distDir = path.join(baseDir, 'dist');
+    fs.mkdirSync(distDir, { recursive: true });
+
+    try {
+      if (needsModules) {
+        const zipPath = path.join(tempDir, 'modules.zip');
+        const assetInfo = await getAssetIdAndDownloadUrl('modules.zip');
+        await downloadFile(assetInfo.url, zipPath, 'modules.zip', downloadWin, assetInfo.isApi);
+        await extractZip(zipPath, distDir, downloadWin);
+      }
+
+      if (needsModels) {
+        const zipPath = path.join(tempDir, 'model_dir.zip');
+        const assetInfo = await getAssetIdAndDownloadUrl('model_dir.zip');
+        await downloadFile(assetInfo.url, zipPath, 'model_dir.zip', downloadWin, assetInfo.isApi);
+        await extractZip(zipPath, distDir, downloadWin);
+      }
+
+      downloadSuccess = true;
+      downloadWin.close();
+    } catch (err) {
+      console.error('Resource download error:', err);
+      await downloadWin.webContents.executeJavaScript(`
+        if (document.getElementById('status')) {
+          document.getElementById('status').innerText = 'Error: ' + ${JSON.stringify(err.message)};
+          document.getElementById('details').innerText = 'Please restart the app to retry.';
+          document.getElementById('progress').style.background = '#ef4444';
+        }
+      `).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      throw err;
+    }
+  }
+
   function startBackend() {
     console.log(`Starting Voice Changer Backend: ${pythonExe} ${args.join(' ')}`);
 
@@ -96,8 +421,7 @@ if (!gotTheLock) {
     });
   }
 
-  // Start the backend
-  startBackend();
+  // Backend is now started after resource validation inside app.whenReady
 
   function shutdown() {
     if (isShuttingDown) {
@@ -206,14 +530,21 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
-    createWindow();
+  app.whenReady().then(async () => {
+    try {
+      await checkAndDownloadResources();
+      startBackend();
+      createWindow();
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-      }
-    });
+      app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          createWindow();
+        }
+      });
+    } catch (err) {
+      console.error('Failed to initialize resources:', err.message);
+      app.quit();
+    }
   });
 
   app.on('window-all-closed', () => {
