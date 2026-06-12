@@ -405,7 +405,14 @@ if (!gotTheLock) {
       stdio: stdioOption,
       shell: false,
       windowsHide: true, // This prevents the black cmd window from appearing
-      env: { ...process.env, PYTHONUNBUFFERED: '1' }
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: '1',
+        // Suppress Python's webbrowser.open() — the backend tries to open the
+        // UI in the system's default browser; we serve it in Electron instead.
+        BROWSER: 'echo',
+        DISPLAY: ''
+      }
     });
 
     backend.on('error', (err) => {
