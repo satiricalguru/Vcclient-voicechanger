@@ -32,8 +32,9 @@ if (!gotTheLock) {
 
   const pythonExe = path.join(baseDir, 'dist', 'main.exe');
   // Pass arguments as separate items (space-separated) to match start_http.bat exactly.
-  // Using = (e.g. --no_cui=True) causes the Python backend CLI parser to fail, which defaults to launching the GUI window.
-  const args = ['cui', '--https', 'false', '--no_cui', 'True', '--no_launch_client'];
+  // --no_cui True: prevents the backend from launching its own Qt GUI window.
+  // NOTE: --no_launch_client does NOT exist in this build and causes a parse error that crashes the backend.
+  const args = ['cui', '--https', 'false', '--no_cui', 'True'];
 
   let backend = null;
   let isShuttingDown = false;

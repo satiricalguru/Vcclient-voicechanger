@@ -12,6 +12,7 @@
   },
   "scripts": {
     "start": "electron .",
+    "predev": "powershell -Command \"taskkill /F /IM electron.exe 2>$null; taskkill /F /IM main.exe 2>$null; exit 0\"",
     "dev": "electron .",
     "lint": "eslint main.js",
     "create-ico": "python scripts/create_ico.py",
