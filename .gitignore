@@ -4,6 +4,10 @@ node_modules/
 # ── Large binary / runtime-generated ─────────────────
 # The main.exe is distributed separately as a GitHub Release asset
 dist/main.exe
+dist/noop-browser.exe
+dist/silent-wait.exe
+main.exe_extracted/
+scratch/
 
 # Voice model binaries (too large for git; distributed separately)
 dist/model_dir/
@@ -13,6 +17,7 @@ static_model_dir/
 
 # ML inference modules (large ONNX/PT files)
 dist/modules/
+modules/
 
 # ── Logs & temp ───────────────────────────────────────
 *.log

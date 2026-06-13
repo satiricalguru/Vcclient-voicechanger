@@ -58,6 +58,27 @@ if (!gotTheLock) {
     }
   }
 
+  // Clean up old PyInstaller temp directories
+  try {
+    const customTempDir = path.join(baseDir, 'tmp_dir');
+    if (fs.existsSync(customTempDir)) {
+      console.log('Cleaning up old temp directories in tmp_dir...');
+      const files = fs.readdirSync(customTempDir);
+      for (const file of files) {
+        if (file.startsWith('_MEI')) {
+          try {
+            fs.rmSync(path.join(customTempDir, file), { recursive: true, force: true });
+            console.log(`Cleaned up old temp directory: ${file}`);
+          } catch (e) {
+            // Directory might be locked by running processes
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to clean up old temp directories:', e.message);
+  }
+
   function killProcessTree(pid) {
     try {
       if (process.platform === 'win32') {
@@ -417,8 +438,36 @@ if (!gotTheLock) {
     }
   }
 
+  // Creates a silent background executable that sleeps forever.
+  // We use this to replace voice-changer-native-client.exe so that
+  // the python backend's wait() block is satisfied without launching a second GUI window.
+  function ensureSilentWaitExe() {
+    if (process.platform !== 'win32') return null;
+    const exePath = path.join(baseDir, 'dist', 'silent-wait.exe');
+    if (fs.existsSync(exePath)) return exePath;
+    try {
+      const cs = 'public class N{public static void Main(){System.Threading.Thread.Sleep(-1);}}';
+      execSync(
+        `powershell -NoProfile -Command "Add-Type -TypeDefinition '${cs}' -OutputAssembly '${exePath}' -OutputType WindowsApplication"`,
+        { timeout: 15000, stdio: 'ignore' }
+      );
+      console.log('Created silent-wait.exe to suppress backend shutdown.');
+      return exePath;
+    } catch (e) {
+      console.warn('Could not create silent-wait.exe:', e.message);
+      return null;
+    }
+  }
+
   function startBackend(noopBrowserExe) {
     console.log(`Starting Voice Changer Backend: ${pythonExe} ${args.join(' ')}`);
+
+    const silentWaitExe = ensureSilentWaitExe();
+
+    const customTempDir = path.join(baseDir, 'tmp_dir');
+    if (!fs.existsSync(customTempDir)) {
+      fs.mkdirSync(customTempDir, { recursive: true });
+    }
 
     const stdioOption = logStream ? ['ignore', logStream, logStream] : 'ignore';
     backend = spawn(pythonExe, args, {
@@ -429,11 +478,59 @@ if (!gotTheLock) {
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1',
+        TEMP: customTempDir,
+        TMP: customTempDir,
         // Point Python's webbrowser module to our no-op exe so it never falls
         // back to os.startfile() (which opens Chrome/Edge regardless of env vars).
         ...(noopBrowserExe ? { BROWSER: noopBrowserExe } : {})
       }
     });
+
+    // Start active cleanup for voice-changer-native-client binary inside isolated temp dir.
+    // The python backend runs GPUDeviceManager/AudioDeviceManager initialization taking ~7 seconds,
+    // which gives this poller a large buffer to find and remove the binary before it is spawned.
+    let pollCount = 0;
+    const maxPolls = 600; // 60 seconds timeout
+    const interval = setInterval(() => {
+      pollCount++;
+      if (pollCount > maxPolls || isShuttingDown) {
+        clearInterval(interval);
+        return;
+      }
+
+      try {
+        const files = fs.readdirSync(customTempDir);
+        for (const file of files) {
+          if (file.startsWith('_MEI')) {
+            const meiDir = path.join(customTempDir, file);
+            const nativeClientExe = path.join(meiDir, 'native_client', 'voice-changer-native-client.exe');
+            const nativeClientApp = path.join(meiDir, 'native_client', 'voice-changer-native-client.app', 'Contents', 'MacOS', 'voice-changer-native-client');
+            
+            [nativeClientExe, nativeClientApp].forEach(targetPath => {
+              if (fs.existsSync(targetPath)) {
+                try {
+                  const stats = fs.statSync(targetPath);
+                  if (stats.size > 20480) { // Only replace if it is the large binary (> 20KB)
+                    if (silentWaitExe && fs.existsSync(silentWaitExe)) {
+                      fs.copyFileSync(silentWaitExe, targetPath);
+                      console.log(`Successfully intercepted and replaced native client: ${targetPath}`);
+                    } else {
+                      // Fallback to truncation if compilation failed
+                      fs.writeFileSync(targetPath, '');
+                      console.log(`Successfully intercepted and truncated native client (fallback): ${targetPath}`);
+                    }
+                  }
+                } catch (e) {
+                  // Ignore errors, we will retry on next tick
+                }
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Error polling custom temp dir:', err.message);
+      }
+    }, 100);
 
     backend.on('error', (err) => {
       console.error('Failed to start backend:', err.message);
