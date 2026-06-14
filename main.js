@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, execSync } = require('child_process');
 const https = require('https');
+const http = require('http');
 
 // Single instance lock to prevent duplicate app windows
 const gotTheLock = app.requestSingleInstanceLock();
@@ -623,46 +624,85 @@ if (!gotTheLock) {
       });
     }
 
-    let retries = 0;
+    function checkBackendReady(callback) {
+      const req = http.get('http://127.0.0.1:18000', (res) => {
+        callback(true);
+      });
+      req.on('error', () => {
+        callback(false);
+      });
+      req.setTimeout(800, () => {
+        req.destroy();
+        callback(false);
+      });
+      req.end();
+    }
+
     let testTriggered = false;
 
     function loadApp() {
-      // Don't try to load if the window was already destroyed
       if (win.isDestroyed()) return;
 
-      win.loadURL('http://127.0.0.1:18000').then(() => {
-        console.log('Successfully loaded URL: http://127.0.0.1:18000');
-        if (testMode && !testTriggered) {
-          testTriggered = true;
-          // Wait for React to mount and modern-ui.js to execute
-          setTimeout(async () => {
-            try {
-              const html = await win.webContents.executeJavaScript('document.body.innerHTML');
-              fs.writeFileSync(path.join(__dirname, 'dom_dump.html'), html);
-              console.log('Rendered DOM dumped to dom_dump.html');
-            } catch (err) {
-              console.error('Error dumping DOM:', err.message);
-            } finally {
-              console.log('Test execution finished. Exiting.');
-              app.quit();
+      // First load the local loading screen
+      win.loadFile(path.join(__dirname, 'loading.html')).then(() => {
+        let pingInterval;
+        let checkCount = 0;
+        const maxChecks = 120; // 60 seconds max
+
+        pingInterval = setInterval(() => {
+          if (win.isDestroyed()) {
+            clearInterval(pingInterval);
+            return;
+          }
+
+          checkCount++;
+          checkBackendReady((isReady) => {
+            if (isReady) {
+              clearInterval(pingInterval);
+              // Trigger final visual transition on the loading screen
+              win.webContents.executeJavaScript('if (typeof window.setComplete === "function") window.setComplete();')
+                .catch(() => {});
+              
+              // Give the progress bar animation time to fill to 100% and fade the card out
+              setTimeout(() => {
+                if (win.isDestroyed()) return;
+                win.loadURL('http://127.0.0.1:18000').then(() => {
+                  console.log('Successfully loaded URL: http://127.0.0.1:18000');
+                  if (testMode && !testTriggered) {
+                    testTriggered = true;
+                    setTimeout(async () => {
+                      try {
+                        const html = await win.webContents.executeJavaScript('document.body.innerHTML');
+                        fs.writeFileSync(path.join(__dirname, 'dom_dump.html'), html);
+                        console.log('Rendered DOM dumped to dom_dump.html');
+                      } catch (err) {
+                        console.error('Error dumping DOM:', err.message);
+                      } finally {
+                        console.log('Test execution finished. Exiting.');
+                        app.quit();
+                      }
+                    }, 4000);
+                  }
+                }).catch((err) => {
+                  console.error('Failed to load URL after backend ready:', err.message);
+                });
+              }, 850);
+            } else if (checkCount >= maxChecks) {
+              clearInterval(pingInterval);
+              console.error('Max retries reached. Unable to connect to backend.');
+              if (testMode) {
+                process.exit(1);
+              }
+              if (!win.isDestroyed()) {
+                win.loadURL('data:text/html,<h1>Unable to connect to Voice Changer backend</h1><p>Please ensure the backend is running on port 18000.</p>');
+              }
             }
-          }, 4000);
-        }
+          });
+        }, 500); // Check every 500ms
       }).catch((err) => {
-        console.error('Failed to load URL:', err.message);
-        retries++;
-        if (retries < MAX_RETRIES) {
-          console.log(`Retrying in ${RETRY_INTERVAL}ms... (attempt ${retries}/${MAX_RETRIES})`);
-          setTimeout(loadApp, RETRY_INTERVAL);
-        } else {
-          console.error('Max retries reached. Unable to connect to backend.');
-          if (testMode) {
-            process.exit(1);
-          }
-          if (!win.isDestroyed()) {
-            win.loadURL('data:text/html,<h1>Unable to connect to Voice Changer backend</h1><p>Please ensure the backend is running on port 18000.</p>');
-          }
-        }
+        console.error('Failed to load loading.html:', err.message);
+        // Fallback directly to the backend URL if loading.html fails to load
+        win.loadURL('http://127.0.0.1:18000').catch(() => {});
       });
     }
 

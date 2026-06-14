@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Voice Changer - Starting</title>
+  <!-- Load Premium Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --surface-void: #08080f;
+      --surface-glass: rgba(18, 18, 32, 0.45);
+      --border-glass: rgba(255, 255, 255, 0.08);
+      --border-active: rgba(139, 92, 246, 0.5);
+      --text-bright: #eeeef4;
+      --text-dim: #7b7d9e;
+      --text-accent: #a78bfa;
+      --color-primary: #8b5cf6;
+      --color-primary-glow: rgba(139, 92, 246, 0.25);
+      
+      --gradient-body: radial-gradient(ellipse at 20% 0%, rgba(139,92,246,0.09) 0%, transparent 55%),
+                       radial-gradient(ellipse at 80% 100%, rgba(59,130,246,0.06) 0%, transparent 55%),
+                       linear-gradient(175deg, #0c0c18 0%, #08080f 40%, #050510 100%);
+      
+      --font-body: "Outfit", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    body {
+      background: var(--gradient-body);
+      background-attachment: fixed;
+      color: var(--text-bright);
+      font-family: var(--font-body);
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      perspective: 1000px;
+    }
+
+    /* Floating Particles Background */
+    .particles {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .particle {
+      position: absolute;
+      bottom: -10px;
+      width: 4px;
+      height: 4px;
+      background: rgba(139, 92, 246, 0.3);
+      border-radius: 50%;
+      animation: floatUp 8s infinite linear;
+    }
+
+    /* Generate floating particle animations */
+    @keyframes floatUp {
+      0% {
+        transform: translateY(0) scale(0.5);
+        opacity: 0;
+      }
+      10% {
+        opacity: 0.7;
+      }
+      90% {
+        opacity: 0.7;
+      }
+      100% {
+        transform: translateY(-105vh) scale(1.2);
+        opacity: 0;
+      }
+    }
+
+    /* Glass Container Card */
+    .glass-card {
+      background: var(--surface-glass);
+      backdrop-filter: blur(24px) saturate(120%);
+      -webkit-backdrop-filter: blur(24px) saturate(120%);
+      border: 1px solid var(--border-glass);
+      border-radius: 20px;
+      width: 480px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4), 
+                  inset 0 1px 1px rgba(255, 255, 255, 0.05);
+      z-index: 10;
+      transform: translateZ(0);
+      transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      animation: cardIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+
+    @keyframes cardIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    /* Logo Glow Effect */
+    .logo-container {
+      margin-bottom: 25px;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-glow {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      background: var(--color-primary);
+      filter: blur(30px);
+      opacity: 0.45;
+      border-radius: 50%;
+      animation: pulseGlow 3s infinite ease-in-out;
+    }
+
+    .logo-svg {
+      width: 50px;
+      height: 50px;
+      z-index: 2;
+      filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.6));
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { transform: scale(1); opacity: 0.4; }
+      50% { transform: scale(1.3); opacity: 0.6; }
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      margin: 0 0 8px 0;
+      background: linear-gradient(135deg, #eeeef4, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 30px;
+    }
+
+    /* Progress Indicator Layout */
+    .progress-wrapper {
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.02);
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #6366f1, #a78bfa, #ec4899);
+      background-size: 200% 100%;
+      border-radius: 10px;
+      box-shadow: 0 0 12px rgba(139, 92, 246, 0.5);
+      transition: width 0.3s cubic-bezier(0.1, 0.8, 0.25, 1);
+      animation: gradientShift 3s infinite linear;
+    }
+
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* Text details */
+    .status-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+
+    .status-text {
+      color: var(--text-bright);
+      font-weight: 500;
+      transition: color 0.3s ease;
+    }
+
+    .percent-text {
+      font-family: var(--font-mono);
+      color: var(--text-accent);
+      font-weight: 600;
+    }
+
+    .details-text {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 15px;
+      font-family: var(--font-mono);
+      opacity: 0.7;
+    }
+
+    /* Transition states */
+    .glass-card.complete {
+      transform: scale(0.97) translateY(-10px);
+      opacity: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Floating particles -->
+  <div class="particles" id="particles"></div>
+
+  <!-- Loading Card -->
+  <div class="glass-card" id="card">
+    <div class="logo-container">
+      <div class="logo-glow"></div>
+      <!-- Premium Audio Waves SVG logo -->
+      <svg class="logo-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 9V15M8 6V18M12 3V21M16 6V18M20 9V15" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    
+    <h1>Voice Changer</h1>
+    <div class="subtitle">Client Initialization</div>
+
+    <div class="progress-wrapper">
+      <div class="progress-track">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="status-container">
+        <span class="status-text" id="status">Starting python backend...</span>
+        <span class="percent-text" id="percent">0%</span>
+      </div>
+    </div>
+
+    <div class="details-text" id="details">Waiting for local server response on port 18000</div>
+  </div>
+
+  <script>
+    // Create random background particles
+    const particlesContainer = document.getElementById('particles');
+    const particleCount = 18;
+    for (let i = 0; i < particleCount; i++) {
+      const particle = document.createElement('div');
+      particle.className = 'particle';
+      particle.style.left = `${Math.random() * 100}%`;
+      particle.style.animationDelay = `${Math.random() * 8}s`;
+      particle.style.animationDuration = `${5 + Math.random() * 5}s`;
+      particle.style.width = particle.style.height = `${2 + Math.random() * 4}px`;
+      particlesContainer.appendChild(particle);
+    }
+
+    const progressBar = document.getElementById('progressBar');
+    const percentText = document.getElementById('percent');
+    const statusText = document.getElementById('status');
+    const detailsText = document.getElementById('details');
+
+    let currentProgress = 0;
+    let isFinished = false;
+
+    // Progression of status messages to make it feel rich and dynamic
+    const bootSteps = [
+      { max: 20, status: "Starting Python backend process...", details: "Setting up sandboxed filesystem environment" },
+      { max: 40, status: "Loading neural network weights...", details: "Importing PyTorch & ONNX libraries" },
+      { max: 65, status: "Initializing hardware acceleration...", details: "Configuring GPUDeviceManager / CUDA interfaces" },
+      { max: 85, status: "Setting up system audio streams...", details: "Configuring AudioDeviceManager endpoints" },
+      { max: 92, status: "Awaiting local server bind...", details: "Resolving localhost listener on port 18000" }
+    ];
+
+    // Smooth simulated growth curve (asymptotic towards 92%)
+    const startTime = Date.now();
+    const duration = 7500; // Expected average boot time in ms (7.5s)
+
+    function updateSimulation() {
+      if (isFinished) return;
+
+      const elapsed = Date.now() - startTime;
+      
+      // Logarithmic curve: progress rises quickly then slows down as it approaches 92%
+      let simulated = 92 * (1 - Math.exp(-elapsed / 2800));
+      
+      if (simulated > 92) simulated = 92;
+      
+      if (simulated > currentProgress) {
+        currentProgress = simulated;
+        progressBar.style.width = `${currentProgress}%`;
+        percentText.innerText = `${Math.round(currentProgress)}%`;
+
+        // Update steps dynamically
+        for (const step of bootSteps) {
+          if (currentProgress <= step.max) {
+            statusText.innerText = step.status;
+            detailsText.innerText = step.details;
+            break;
+          }
+        }
+      }
+
+      requestAnimationFrame(updateSimulation);
+    }
+
+    // Begin simulated progress loop
+    requestAnimationFrame(updateSimulation);
+
+    // Global completion callback invoked by the Electron main process
+    window.setComplete = function() {
+      isFinished = true;
+      currentProgress = 100;
+      progressBar.style.width = '100%';
+      percentText.innerText = '100%';
+      statusText.innerText = 'Server ready! Connecting...';
+      detailsText.innerText = 'Initializing client interface';
+      statusText.style.color = '#34d399'; // Green text
+      
+      setTimeout(() => {
+        document.getElementById('card').classList.add('complete');
+      }, 350);
+    };
+  </script>
+</body>
+</html>

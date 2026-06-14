@@ -1647,8 +1647,12 @@ span, label {
 
 
 /* ── 22. Particle Background ──────────────────────────────── */
+#app {
+  position: relative;
+  z-index: 1;
+}
 .vc-particles-container {
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: -1;
